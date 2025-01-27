@@ -328,7 +328,7 @@ def fi_insert_doctor_location(request):
 
     try:
         random_string = ''.join(random.choices(string.ascii_uppercase + string.digits, k=32))
-        request.data['location_qr_url'] = 'http://13.233.211.102/drishti_bot/bot/?id='+str(random_string)
+        request.data['location_qr_url'] = 'http://15.206.32.93/drishti_bot/bot/?id='+str(random_string)
         request.data['location_token'] = str(random_string)
         serializer = DoctorLocationSerializer(data=request.data)
         # print("Request Data:", request.data)
