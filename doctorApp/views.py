@@ -2120,5 +2120,170 @@ def fillter_doctors(request):
     return Response(response_data, status=status.HTTP_200_OK)
 
 
+@api_view(["POST"])
+def get_nonleaved_dates(request):
+    doctor_id = request.data.get('doctor_id', None)
+
+    if not doctor_id:
+        return Response({'error': 'Doctor Id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # try:
+    #     doctor_location = Tbldoctorlocations.objects.get(doctor_id=doctor_id)
+    # except Tbldoctorlocations.DoesNotExist:
+    #     return Response({'error': 'Invalid location token'}, status=status.HTTP_404_NOT_FOUND)
+
+    #doctor_id = doctor_location.doctor_id
+
+    # Calculate date range (current date to next 10 days)
+    current_date = datetime.now().date()
+    end_date = current_date + timedelta(days=10)
+
+    # Fetch doctor leave records within the specified date range
+    doctor_leaves = Tbldoctorleave.objects.filter(
+        doctor_id=doctor_id,
+        leave_date__gte=(datetime.now() - timedelta(days=1)).timestamp(),
+        leave_date__lt=(datetime.now() + timedelta(days=10)).timestamp()
+    )
+    #print(doctor_leaves)
+    # Prepare a set to track unique leave dates with non-zero start/end times
+    valid_leave_dates = set()
+
+    for leave in doctor_leaves:
+        if leave.start_time != 0 and leave.end_time != 0:  # Only consider if start_time and end_time are non-zero
+            leave_date = datetime.fromtimestamp(leave.leave_date).date()
+            valid_leave_dates.add(leave_date.strftime('%d-%m-%Y'))  # Add formatted date string to the set.
+    
+    valid_leave_dates=list(valid_leave_dates)
+    #print(valid_leave_dates)
+    leave_details=[]
+    for leave_date in valid_leave_dates:  
+            # Construct leave detail entry
+            leave_details.append(leave_date)
+
+    # Generate list of all dates within the date range (including current date)
+    all_dates = [current_date + timedelta(days=i) for i in range(10)]  # 11 days including current date
+
+    # Prepare non-leave date details with structured format
+    nonleaved_dates_details = []
+    for date in all_dates:
+        if date not in [datetime.fromtimestamp(leave.leave_date).date() for leave in doctor_leaves]:
+            # Determine time suffix based on day of the week (Monday to Sunday)
+            day_of_week = date.weekday() + 1  # Monday is 0, so add 1 to match your day numbering
+            availability = Tbldoctorlocationavailability.objects.filter(doctor_id=doctor_id, availability_day=day_of_week).first()
+            if availability and availability.availability_starttime != 0 and availability.availability_endtime != 0:
+                    
+                # Construct non-leave detail entry
+                nonleaved_dates_details.append(date.strftime('%d-%m-%Y'))
+
+    # Combine leave and non-leave date details into a single list
+    script_options = leave_details + nonleaved_dates_details
+    # Prepare response data with the desired structure
+    response_data = {
+        'message_code': 1000,
+        'message_text': 'Non-leaved and leave details retrieved successfully.',
+        'message_data': {
+            'nonleaved_dates':script_options,
+            'leave_details': list(valid_leave_dates)  # Convert set to list to maintain unique dates
+        },
+        'message_debug': ""
+    }
+
+    return Response(response_data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def get_leave_or_availability(request):
+    doctor_id = request.data.get('doctor_id', None)
+    date_string = request.data.get('date', None)
+
+    if not doctor_id or not date_string:
+        return Response({'error': 'Doctor ID and date are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+    try:
+        # Parse the provided date string into a datetime object
+        date = datetime.strptime(date_string, "%d-%m-%Y").date()
+    except ValueError:
+        return Response({'error': 'Invalid date format. Use dd-MM-YYYY'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Convert the date to a Unix timestamp (epoch time)
+    leave_timestamp = datetime.timestamp(datetime.combine(date, datetime.min.time()))
+
+    # Check if there are doctor leaves for the specified date
+    doctor_leaves = Tbldoctorleave.objects.filter(
+        doctor_id=doctor_id,
+        leave_date=leave_timestamp
+    )
+
+    if doctor_leaves.exists():
+        # Doctor leave details found for the date
+        leave_details = []
+        for leave in doctor_leaves:
+            if leave.start_time != 0 and leave.end_time != 0:
+                # Determine time suffix based on order (1: AM, 2 or 3: PM)
+                if leave.order == 1:
+                    time_suffix = " AM"
+                else:
+                    time_suffix = " PM"
+
+                start_time_str = f"{leave.start_time}{time_suffix}"
+                end_time_str = f"{leave.end_time}{time_suffix}"
+
+                leave_details.append(f"{start_time_str} to {end_time_str}")
+
+        # Prepare response data with structured format
+        response_data = {
+            'message_code': 1000,
+            'message_text': 'Response Retrieval Successfully.',
+            'message_data': {
+                'Slots': leave_details
+            },
+            'message_debug': []
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    else:
+        # No doctor leaves found, check doctor location availability for the day of the week
+        day_of_week = date.weekday() + 1  # Monday is 0, so add 1 to match your day numbering
+
+        availabilities = Tbldoctorlocationavailability.objects.filter(
+            doctor_id=doctor_id,
+            availability_day=day_of_week
+        )
+
+        if availabilities.exists():
+            availability_details = []
+            for availability in availabilities:
+                if availability.availability_starttime != 0 and availability.availability_endtime != 0:
+                    # Determine time suffix based on order (1: AM, 2 or 3: PM)
+                    if availability.availability_order == 1:
+                        time_suffix = " AM"
+                    else:
+                        time_suffix = " PM"
+
+                    start_time_str = f"{availability.availability_starttime}{time_suffix}"
+                    end_time_str = f"{availability.availability_endtime}{time_suffix}"
+
+                    availability_details.append(f"{start_time_str} to {end_time_str}")
+
+            # Prepare response data with structured format
+            response_data = {
+                'message_code': 1000,
+                'message_text': 'Response Retrieval Successfully.',
+                'message_data': {
+                    'Slots': availability_details
+                },
+                'message_debug': []
+            }
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        else:
+            return Response({'error': 'No availability information found for the date'}, status=status.HTTP_404_NOT_FOUND)
+
+
+ 
+
 
 

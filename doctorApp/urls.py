@@ -70,7 +70,8 @@ urlpatterns = [
     path('doctors_stats/',doctors_stats,name='doctors_stats'),
     path('fillter_doctors/',fillter_doctors,name='fillter_doctors'),
     path('login_desktop/',login_desktop,name='login_desktop'),
-    
+    path('get_nonleaved_dates/',get_nonleaved_dates,name='get_nonleaved_dates'),
+    path('get_leave_or_availability/',get_leave_or_availability,name='get_leave_or_availability'),
  
 ]
 
