@@ -72,6 +72,12 @@ urlpatterns = [
     path('login_desktop/',login_desktop,name='login_desktop'),
     path('get_nonleaved_dates/',get_nonleaved_dates,name='get_nonleaved_dates'),
     path('get_leave_or_availability/',get_leave_or_availability,name='get_leave_or_availability'),
+    path('insert_emergency_group_doctor/' ,insert_emergency_group_doctor , name='insert_emergency_group_doctor'),
+    path('get_emergency_group_doctors/' , get_emergency_group_doctors , name='get_emergency_group_doctors'),
+    path('update_emergency_group_doctor/' ,update_emergency_group_doctor,name='update_emergency_group_doctor'),
+    path('delete_emergency_group_doctor/',delete_emergency_group_doctor,name='delete_emergency_group_doctor'),
+    path('insert_emergency_support_message/',insert_emergency_support_message,name='insert_emergency_support_message'),
+ 
  
 ]
 

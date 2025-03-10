@@ -2283,7 +2283,386 @@ def get_leave_or_availability(request):
             return Response({'error': 'No availability information found for the date'}, status=status.HTTP_404_NOT_FOUND)
 
 
- 
+
+####################EmergencyGroupDoctor#####################
+@api_view(["POST"])
+def insert_emergency_group_doctor(request):
+    response_data = {
+        'message_code': 999,
+        'message_text': 'Error occurred.',
+        'message_data': []
+    }
+    
+    try:
+        doctor_id = request.data.get('doctor_id')
+        doctor_name = request.data.get('doctor_name')
+        doctor_mobileno = request.data.get('doctor_mobileno')
+
+        # Validate required fields
+        if not doctor_id or not doctor_name or not doctor_mobileno:
+            response_data['message_text'] = 'Doctor ID, name, and mobile number are required.'
+            return Response(response_data, status=status.HTTP_200_OK)
+        
+        # Check if doctor_id and doctor_mobileno combination already exists
+        if EmergencyGroupDoctors.objects.filter(doctor_id=doctor_id, doctor_mobileno=doctor_mobileno,is_deleted=0).exists():
+            response_data['message_code'] = 1004
+            response_data['message_text'] = 'This doctor id  and mobile number record is already present.'
+            return Response(response_data, status=status.HTTP_200_OK)
+        
+        # Prepare data for serialization
+        data = {
+            "doctor_id": doctor_id,
+            "doctor_name": doctor_name,
+            "doctor_mobileno": doctor_mobileno,
+        }
+
+        # Serialize and save the data
+        serializer = EmergencyGroupDoctorsSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            response_data['message_code'] = 1000
+            response_data['message_text'] = 'Emergency group doctor added successfully.'
+            response_data['message_data'] = serializer.data
+        else:
+            response_data['message_text'] = 'Invalid data provided.'
+            response_data['message_data'] = serializer.errors
+    
+    except Exception as e:
+        response_data['message_text'] = str(e)
+    
+    return Response(response_data, status=status.HTTP_200_OK)
 
 
+@api_view(["POST"])
+def get_emergency_group_doctors(request):
+    response_data = {
+        'message_code': 999,
+        'message_text': 'Error occurred.',
+        'message_data': []
+    }
 
+    try:
+        doctor_id = request.data.get('doctor_id')
+        emergency_groupdoctor_id = request.data.get('emergency_groupdoctor_id')
+
+        # Validate that at least one parameter is provided
+        if not (doctor_id or emergency_groupdoctor_id):
+            response_data['message_text'] = 'Provide doctor_id or emergency_groupdoctor_id.'
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Query emergency group doctors using flexible filtering
+        emergency_group_doctors = EmergencyGroupDoctors.objects.filter(
+            Q(doctor_id=doctor_id) | Q(emergency_groupdoctor_id=emergency_groupdoctor_id),
+            is_deleted=0
+        )
+
+        if not emergency_group_doctors.exists():
+            response_data['message_code'] = 1001
+            response_data['message_text'] = 'No records found.'
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Serialize and return the results
+        serializer = EmergencyGroupDoctorsSerializer(emergency_group_doctors, many=True)
+        response_data['message_code'] = 1000
+        response_data['message_text'] = 'Records fetched successfully.'
+        response_data['message_data'] = serializer.data
+
+    except Exception as e:
+        response_data['message_text'] = str(e)
+
+    return Response(response_data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def update_emergency_group_doctor(request):
+    response_data = {
+        'message_code': 999,
+        'message_text': 'Error occurred.',
+        'message_data': None
+    }
+
+    try:
+        emergency_groupdoctor_id = request.data.get('emergency_groupdoctor_id')
+        doctor_name = request.data.get('doctor_name')
+        doctor_mobileno = request.data.get('doctor_mobileno')
+
+        # Validate that emergency_groupdoctor_id is provided
+        if not emergency_groupdoctor_id:
+            response_data['message_text'] = 'Emergency Group Doctor ID is required.'
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Fetch the existing record
+        try:
+            emergency_doctor = EmergencyGroupDoctors.objects.get(
+                emergency_groupdoctor_id=emergency_groupdoctor_id,
+                is_deleted=0  # Ensure it's not deleted
+            )
+        except EmergencyGroupDoctors.DoesNotExist:
+            response_data['message_code'] = 1001
+            response_data['message_text'] = 'No record found for the given ID.'
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Check if the provided mobile number is already linked to the same doctor_id
+        if doctor_mobileno:
+            existing_record = EmergencyGroupDoctors.objects.filter(
+                doctor_id=emergency_doctor.doctor_id,
+                doctor_mobileno=doctor_mobileno,
+                is_deleted=0
+            ).exclude(emergency_groupdoctor_id=emergency_groupdoctor_id).first()
+
+            if existing_record:
+                response_data['message_code'] = 1002
+                response_data['message_text'] = 'This mobile number is already linked to the same doctor.'
+                return Response(response_data, status=status.HTTP_200_OK)
+
+        # Update only provided fields
+        if doctor_name:
+            emergency_doctor.doctor_name = doctor_name
+        if doctor_mobileno:
+            emergency_doctor.doctor_mobileno = doctor_mobileno
+
+        # Save changes
+        emergency_doctor.save()
+
+        # Serialize updated data
+        serializer = EmergencyGroupDoctorsSerializer(emergency_doctor)
+
+        response_data['message_code'] = 1000
+        response_data['message_text'] = 'Record updated successfully.'
+        response_data['message_data'] = serializer.data  # Return updated record
+
+    except Exception as e:
+        response_data['message_text'] = str(e)
+
+    return Response(response_data, status=status.HTTP_200_OK)
+
+@api_view(["POST"])
+def delete_emergency_group_doctor(request):
+    response_data = {
+        'message_code': 999,
+        'message_text': 'Error occurred.',
+        'message_data': None
+    }
+
+    try:
+        emergency_groupdoctor_id = request.data.get('emergency_groupdoctor_id')
+        deleted_by = request.data.get('deleted_by')  # Optional: ID of user performing the delete
+        deleted_reason = request.data.get('deleted_reason', '')
+
+        # Validate required fields
+        if not emergency_groupdoctor_id:
+            response_data['message_text'] = 'Emergency Group Doctor ID is required.'
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Fetch record
+        try:
+            emergency_doctor = EmergencyGroupDoctors.objects.get(
+                emergency_groupdoctor_id=emergency_groupdoctor_id,
+                is_deleted=0  # Ensure it's not already deleted
+            )
+        except EmergencyGroupDoctors.DoesNotExist:
+            response_data['message_code'] = 1001
+            response_data['message_text'] = 'No record found for the given ID.'
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Perform soft delete
+        emergency_doctor.is_deleted = 1
+        emergency_doctor.deleted_on = datetime.now()
+        emergency_doctor.save()
+
+        response_data['message_code'] = 1000
+        response_data['message_text'] = 'Record deleted successfully.'
+        response_data['message_data'] = {
+            'emergency_groupdoctor_id': emergency_doctor.emergency_groupdoctor_id,
+            'deleted_on': emergency_doctor.deleted_on,
+            'deleted_by': emergency_doctor.deleted_by,
+            'deleted_reason': emergency_doctor.deleted_reason
+        }
+
+    except Exception as e:
+        response_data['message_text'] = str(e)
+
+    return Response(response_data, status=status.HTTP_200_OK)
+
+
+# @api_view(["POST"])
+# def insert_emergency_support_message(request):
+#     response_data = {
+#         'message_code': 999,
+#         'message_text': 'Error occurred.',
+#         'message_data': []
+#     }
+
+#     try:
+#         doctor_id = request.data.get("doctor_id")
+#         appointment_id = request.data.get("appointment_id")
+
+#         if not doctor_id or not appointment_id:
+#             response_data['message_text'] = "doctor_id and appointment_id are required."
+#             return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Check if the doctor has emergency group doctors
+#         emergency_doctors = EmergencyGroupDoctors.objects.filter(
+#             doctor_id=doctor_id, is_deleted=0
+#         )
+
+#         if not emergency_doctors.exists():
+#             response_data['message_text'] = "Doctor has not added any emergency member."
+#             return Response(response_data, status=status.HTTP_200_OK)
+
+#         # Fetch the appointment details
+#         appointment = Tbldoctorappointments.objects.filter(appointment_id=appointment_id).first()
+#         if not appointment:
+#             response_data['message_text'] = "Appointment not found."
+#             return Response(response_data, status=status.HTTP_200_OK)
+
+#         # Fetch the patient ID from patient vitals
+#         patient_vital = Tblpatientvitals.objects.filter(appointment_id=appointment_id).first()
+#         patient_id = patient_vital.patient_id.patient_id if patient_vital else None
+
+#         # Get the patient name from appointment
+#         patient_name = appointment.appointment_name
+
+#         # Get doctor details
+#         doctor = Tbldoctors.objects.filter(doctor_id=doctor_id).first()
+#         if not doctor:
+#             response_data['message_text'] = "Doctor not found."
+#             return Response(response_data, status=status.HTTP_200_OK)
+
+#         doctor_name = f"{doctor.doctor_firstname} {doctor.doctor_lastname}"
+#         doctor_mobile = doctor.doctor_mobileno
+
+#         created_messages = []
+
+#         # Insert emergency support messages for each emergency doctor
+#         for emergency_doctor in emergency_doctors:
+#             message_body = (
+#                 f"Hi {emergency_doctor.doctor_name}, the patient named {patient_name} "
+#                 f"requires urgent support. Please contact Dr. {doctor_name} at {doctor_mobile}."
+#             )
+
+#             emergency_message = EmergencySupportMessage.objects.create(
+#                 doctor_id=doctor,
+#                 target_doctor=emergency_doctor,
+#                 target_doctor_name=emergency_doctor.doctor_name,
+#                 target_doctor_mobileno=emergency_doctor.doctor_mobileno,
+#                 send_message=message_body,
+#                 send_time= datetime.now(),
+#                 patient_id=patient_id,
+#                 appointment_id=appointment_id,
+#                 patient_name=patient_name
+#             )
+
+#             created_messages.append({
+#                 "emergency_supportmessage_id": emergency_message.emergency_supportmessage_id,
+#                 "message": message_body
+#             })
+
+#         response_data['message_code'] = 1000
+#         response_data['message_text'] = "Emergency messages sent successfully."
+#         response_data['message_data'] = created_messages
+
+#     except Exception as e:
+#         response_data['message_text'] = str(e)
+
+#     return Response(response_data, status=status.HTTP_200_OK)
+
+@api_view(["POST"])
+def insert_emergency_support_message(request):
+    response_data = {
+        'message_code': 999,
+        'message_text': 'Error occurred.',
+        'message_data': []
+    }
+
+    try:
+        doctor_id = request.data.get("doctor_id")
+        appointment_id = request.data.get("appointment_id")
+
+        if not doctor_id or not appointment_id:
+            response_data['message_text'] = "doctor_id and appointment_id are required."
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if an emergency message already exists for this appointment
+        last_emergency_message = EmergencySupportMessage.objects.filter(
+            appointment_id=appointment_id
+        ).order_by("-send_time").first()  # Get the latest record
+
+        if last_emergency_message:
+            IST_OFFSET = timedelta(hours=5, minutes=30)  # IST is UTC +5:30
+            send_time_ist = last_emergency_message.send_time + IST_OFFSET  # Convert to IST
+
+            time_difference = timezone.now() - last_emergency_message.send_time  # Use timezone-aware now()
+            if time_difference.total_seconds() < 18000:  # Less than 5 hours (5 * 60 * 60 = 18000 seconds)
+                wait_time_hours = 5 - (time_difference.total_seconds() // 3600)
+                response_data['message_text'] = (
+                    f"You have already sent a message at {send_time_ist.strftime('%d-%m-%Y %I:%M %p')}. "
+                    f"Please wait for {int(wait_time_hours)} more hours before sending another one."
+                )
+                return Response(response_data, status=status.HTTP_200_OK)
+
+        # Check if the doctor has emergency group doctors
+        emergency_doctors = EmergencyGroupDoctors.objects.filter(
+            doctor_id=doctor_id, is_deleted=0
+        )
+
+        if not emergency_doctors.exists():
+            response_data['message_text'] = "Doctor has not added any emergency member."
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Fetch the appointment details
+        appointment = Tbldoctorappointments.objects.filter(appointment_id=appointment_id).first()
+        if not appointment:
+            response_data['message_text'] = "Appointment not found."
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Fetch the patient ID from patient vitals
+        patient_vital = Tblpatientvitals.objects.filter(appointment_id=appointment_id).first()
+        patient_id = patient_vital.patient_id.patient_id if patient_vital else None
+
+        # Get the patient name from appointment
+        patient_name = appointment.appointment_name
+
+        # Get doctor details
+        doctor = Tbldoctors.objects.filter(doctor_id=doctor_id).first()
+        if not doctor:
+            response_data['message_text'] = "Doctor not found."
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        doctor_name = f"{doctor.doctor_firstname} {doctor.doctor_lastname}"
+        doctor_mobile = doctor.doctor_mobileno
+
+        created_messages = []
+
+        # Insert emergency support messages for each emergency doctor
+        for emergency_doctor in emergency_doctors:
+            message_body = (
+                f"Hi {emergency_doctor.doctor_name}, the patient named {patient_name} "
+                f"requires urgent support. Please contact Dr. {doctor_name} at {doctor_mobile}."
+            )
+
+            emergency_message = EmergencySupportMessage.objects.create(
+                doctor_id=doctor,
+                target_doctor=emergency_doctor,
+                target_doctor_name=emergency_doctor.doctor_name,
+                target_doctor_mobileno=emergency_doctor.doctor_mobileno,
+                send_message=message_body,
+                send_time=timezone.now(),  # Use timezone-aware now()
+                patient_id=patient_id,
+                appointment_id=appointment_id,
+                patient_name=patient_name
+            )
+
+            created_messages.append({
+                "emergency_supportmessage_id": emergency_message.emergency_supportmessage_id,
+                "message": message_body
+            })
+
+        response_data['message_code'] = 1000
+        response_data['message_text'] = "Emergency messages sent successfully."
+        response_data['message_data'] = created_messages
+
+    except Exception as e:
+        response_data['message_text'] = str(e)
+
+    return Response(response_data, status=status.HTTP_200_OK)
